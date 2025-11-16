@@ -1,0 +1,10 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Edit vault",
+            "type": "shell",
+            "command": "export EDITOR=nano && ansible-vault edit ansible/vault.yml --vault-password-file ansible/vaultpass"
+        }
+    ]
+}
