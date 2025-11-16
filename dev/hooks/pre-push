@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+
+VAULT_FILE="ansible/vault.yml"
+VAULTPASS="ansible/vaultpass"
+
+# -------------------------------
+# Check vault password file exists
+# -------------------------------
+if [ ! -f "$VAULTPASS" ]; then
+    echo "❌ Vault password file '$VAULTPASS' not found. Cannot validate vault diff."
+    exit 1
+fi
+
+# -------------------------------
+# Fetch latest origin/main
+# -------------------------------
+git fetch origin main >/dev/null 2>&1
+
+# If origin/main doesn't exist locally, skip check
+if ! git rev-parse --verify origin/main >/dev/null 2>&1; then
+    echo "❌ origin/main not found — skipping remote vault diff."
+    exit 1
+fi
+
+# -------------------------------
+# Check if vault file exists in staging
+# -------------------------------
+if ! git ls-files --error-unmatch "$VAULT_FILE" >/dev/null 2>&1; then
+    # Vault file not staged → nothing to do
+    exit 0
+fi
+
+# -------------------------------
+# Get staged version (what will be committed)
+# -------------------------------
+STAGED_VAULT=$(git show :$VAULT_FILE 2>/dev/null)
+if [ -z "$STAGED_VAULT" ]; then
+    echo "❌ Could not read staged version of $VAULT_FILE"
+    exit 1
+fi
+
+# -------------------------------
+# Decrypt remote vault (origin/main)
+# -------------------------------
+REMOTE_DECRYPTED=$(git show origin/main:$VAULT_FILE 2>/dev/null | ansible-vault decrypt --vault-password-file "$VAULTPASS" 2>/dev/null)
+if [ $? -ne 0 ]; then
+    echo "❌ Failed to decrypt vault from origin/main."
+    exit 1
+fi
+
+# -------------------------------
+# Decrypt staged vault
+# -------------------------------
+LOCAL_DECRYPTED=$(echo "$STAGED_VAULT" | ansible-vault decrypt --vault-password-file "$VAULTPASS" 2>/dev/null)
+if [ $? -ne 0 ]; then
+    echo "❌ Failed to decrypt staged vault."
+    exit 1
+fi
+
+# -------------------------------
+# Compare staged vs remote
+# -------------------------------
+if diff -u <(echo "$REMOTE_DECRYPTED") <(echo "$LOCAL_DECRYPTED") >/dev/null; then
+    echo "✅ No differences in decrypted vault — push allowed."
+    exit 0
+fi
+
+echo "⚠️ Changes detected in encrypted vault!"
+diff --color -u <(echo "$REMOTE_DECRYPTED") <(echo "$LOCAL_DECRYPTED")
+echo ""
+
+# -------------------------------
+# Check for automatic approval
+# -------------------------------
+if [ "$APPROVE_VAULT_CHANGES" = "yes" ]; then
+    echo "🔓 Vault changes approved via APPROVE_VAULT_CHANGES environment variable."
+    exit 0
+fi
+
+echo "❌ Vault changes detected. Set APPROVE_VAULT_CHANGES=yes to override."
+exit 1
