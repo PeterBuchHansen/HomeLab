@@ -5,6 +5,11 @@
             "label": "Edit vault",
             "type": "shell",
             "command": "export EDITOR=nano && ansible-vault edit ansible/vault.yml --vault-password-file ansible/vaultpass"
+        },
+        {
+            "label": "Check diff of 'local' vault.yml against 'origin/main'",
+            "type": "shell",
+            "command": "diff --color <(git show origin/main:ansible/vault.yml | ansible-vault decrypt --vault-password-file ansible/vaultpass) <(ansible-vault view ansible/vault.yml --vault-password-file ansible/vaultpass)"
         }
     ]
 }
